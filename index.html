@@ -1,0 +1,511 @@
+---
+title: "Fatal Crashes"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+
+
+library(flexdashboard)
+library(plotly)
+library(leaflet)
+library(dplyr)
+library(tidyr)
+library(shiny)
+library(carData)
+library(ggplot2)
+library(pdftools) 
+library(stringr)
+library(leaflet)
+library(tidyr)
+library(rvest)
+library(robotstxt)
+library(readr)
+library(dplyr)
+library(stringr)
+library(tigris)
+library(ggplot2)
+library(usmap)
+library(maps)
+library(viridis)
+library(sf)
+library(readxl)
+```
+
+
+Nebraska Counties Fatal Crashes
+=============================
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+**Background Info**
+
+These two graphs represent the 10 largest counties in Nebraska. The Leaflet dot map shows where the counties are located, the dot on the maps represent different counties and the size of the dot is based off the total number of crashes in the county. So the bigger the dot the more crashes. The dots include the name of the county, total accidents and fatal accidents in that county. 
+
+The bar graph shows just the fatal car accidents in each of the 10 counties. 
+
+**Data**
+
+[Nebraska Data](https://dot.nebraska.gov/media/115479/facts2020.pdf)
+
+[10 Most Populated Nebraska Counties](https://www.nebraska-demographics.com/counties_by_population)
+
+[US Data](https://www.iihs.org/topics/fatality-statistics/detail/state-by-state)
+
+[BAC Data](https://cdan.dot.gov/query)
+
+
+Column
+-----------------------------------------------------------------------
+
+### Total Accidents in Nebraska Counties 2020
+
+```{r}
+url<-'https://dot.nebraska.gov/media/115479/facts2020.pdf' 
+file<-pdf_text(url) 
+
+page11<-c(unlist(strsplit(file[11],"\n")))
+page12<-c(unlist(strsplit(file[12],"\n"))) 
+
+page11and12<-c(page11,page12) 
+
+want<-page11and12[c(6:51,58:105)]
+
+result<-matrix(NA,nrow=length(want),ncol=7) 
+nocommas<-gsub(",","",want[1])
+nocommas<-str_trim(nocommas)
+b<-strsplit(nocommas, "\\s{2,}") 
+newb<-unlist(b) 
+
+for(i in 1:length(want)){ 
+  
+  nocommas<-gsub(",","",want[i]) 
+  b<-str_trim(nocommas) 
+  b<-strsplit(b,"\\s{2,}") 
+  newb<-unlist(b) 
+  
+
+  result[i,1]=newb[1]  
+  result[i,2]=newb[2] 
+  result[i,3]=newb[3] 
+  result[i,4]=newb[4] 
+  result[i,5]=newb[5] 
+  result[i,6]=newb[6] 
+  result[i,7]=newb[7] 
+  
+}
+df<-as.data.frame(result)
+col_names= list("County","Total","Fatal","Injury","PDO","Killed","Injured")
+col_names<-unlist(col_names) 
+names(df)<-col_names 
+
+newdf<-df%>%
+  dplyr::select(-County)%>%
+  mutate_if(is.character,as.numeric)  
+
+finaldf<-newdf%>%mutate("County"=df$County)
+
+finaldf<-finaldf %>% relocate(County)  
+
+finaldf<-finaldf%>%
+  filter(grepl('Douglas|Lancaster|Sarpy|Hall|Buffalo|Dodge|Scotts Bluff|Madison|Lincoln|Platte',County))
+lon.lat.df<-data.frame(CountyName= c("Buffalo","Dodge","Douglas","Hall","Lancaster","Lincoln","Madison","Platte","Sarpy","Scotts Bluff"),
+                       lat=c(40.8410,41.6473,41.3148,40.8817,40.8471,40.9338,41.9108,41.5941,41.0744,41.8141),
+                       lon=c(-99.1013,-96.6638,-96.1951,-98.5721,-96.6638,-100.8000,-97.5247,-97.5247,-96.1951,-103.6363)
+                       )
+CompleteDf<-cbind(lon.lat.df,finaldf)%>%select(CountyName,lat,lon,Total,Fatal,Killed,Injured)
+
+leaflet(CompleteDf) %>% 
+  addTiles() %>% 
+  setView(lng=-99.65094389354073,lat=40.83896758973295, zoom = 6.2) %>% 
+  addCircles(~lon, ~lat, popup=paste(CompleteDf$CountyName,"County", ":<br>","Total Accidents",CompleteDf$Total,"<br>","Fatal Accidents",CompleteDf$Fatal), 
+             weight = 9, radius=CompleteDf$Total*2, 
+             color="#0095ee", stroke = TRUE, fillOpacity = 10) 
+
+```
+
+
+### Fatal Accidents in Nebraska Counties 2020
+
+```{r}
+e<-ggplot(CompleteDf, aes(x= reorder(CountyName, -Fatal),y=Fatal)) + 
+  geom_bar(stat="identity", color='skyblue1',fill='skyblue1')+
+  labs(title = "Number of Fatal Accidents in 10 Largest Nebraska Counties in 2020",
+       y = "Total Number of Fatal Accidents",
+       x = "County Name")+
+  coord_flip()+#flipping axis 
+  theme(text=element_text(size=10))
+ggplotly(e)
+```
+
+
+Nebraska Crash Data 
+====================================
+
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+**Background**
+
+These two graphs shows the total crashes, total injuries, and total deaths in Nebraska from 2001-2021. The first graph shows a decreasing trend in both total crashes and total injuries  over the years. Although, this is not the case for deaths over the years. 
+
+**Data**
+
+[Nebraska Data](https://dot.nebraska.gov/media/115479/facts2020.pdf)
+
+[10 Most Populated Nebraska Counties](https://www.nebraska-demographics.com/counties_by_population)
+
+[US Data](https://www.iihs.org/topics/fatality-statistics/detail/state-by-state)
+
+[BAC Data](https://cdan.dot.gov/query)
+
+Column
+-----------------------------------------------------------------------
+
+
+
+```{r fig3 , fig.width = 9}
+
+
+url<-'https://dot.nebraska.gov/media/115479/facts2020.pdf'
+file<-pdf_text(url)
+
+
+page33<-c(unlist(strsplit(file[33],"\n")))  
+
+
+page33<-c(page33)
+
+
+
+
+want<-page33[c(10:29)] 
+
+
+
+result<-matrix(NA,nrow=length(want),ncol=7)
+
+nocommas<-gsub(",","",want[1])
+
+nocommas<-str_trim(nocommas)
+
+b<-strsplit(nocommas, "\\s{2,}")  
+
+newb<-unlist(b) 
+
+for(i in 1:length(want)){
+  
+  nocommas<-gsub(",","",want[i])
+  b<-str_trim(nocommas) 
+  b<-strsplit(b,"\\s{2,}") 
+  newb<-unlist(b) 
+  
+  
+  result[i,1]=newb[1]  
+  result[i,2]=newb[2] 
+  result[i,3]=newb[3] 
+  result[i,4]=newb[4] 
+  result[i,5]=newb[5] 
+  result[i,6]=newb[6] 
+  result[i,7]=newb[7] 
+  
+}
+
+
+
+df<-as.data.frame(result)
+
+
+
+
+col_names= list("Year","TotalCrashes","PersonsInjured","PersonsKilled","CrashRate(per MVM)","FatalityRate(per HMVM)","NationalFatalityRtae(per HMVM)")
+
+col_names<-unlist(col_names)
+
+
+names(df)<-col_names
+
+
+newdf<-df%>%
+  dplyr::select(-Year)%>%
+  mutate_if(is.character,as.numeric)  
+
+
+finaldf<-newdf%>%mutate("Year"=df$Year)
+
+
+finaldf<-finaldf %>% relocate(Year) 
+finaldf$Year<-as.Date(finaldf$Year, "'%y")
+
+
+
+y<-ggplot(finaldf, aes(x = Year)) +
+  geom_line(aes(y = TotalCrashes, color = "Total Crashes"), linewidth = 1.3) +
+  geom_line(aes(y = PersonsInjured, color = "Total People Injured"), linewidth = 1.3) +
+  scale_color_manual(values = c("blue", "red"), 
+                     name = "Data", 
+                     labels = c("Total Crashes", "Total People Injured")) +
+  labs(title = "Total Crash Data in Nebraska 2001-2021",
+       subtitle = "",
+       y = "Total Number",
+       x = "Year") + 
+  theme_bw(base_size = 10) + 
+  scale_x_date(date_labels = "%y", date_breaks ="year")
+ggplotly(y)
+
+```
+
+
+```{r fig.width = 9}
+o<-ggplot(finaldf, aes(x=Year,y=PersonsKilled))+
+  geom_line()+
+  geom_point()+
+  labs(title = "Total Deaths in Nebraska Car Accidents 2001-2021",
+       subtitle = "",
+       y = "Number of Deaths",
+       x = "Year") + 
+  #theme_bw(base_size = 8) + 
+  scale_x_date(date_labels = "%y", date_breaks ="year")
+ggplotly(o)
+```
+
+
+
+US Fatal Accidents 
+====================================
+
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+**Background** 
+
+This graph represents the deaths per 100 thousand people in each state in America. This graph does not only show death but death compared to population. The reason I wanted to look at this was because I knew the higher populated states were going to have more deaths but doing it per 100,000 people showed me really who had a higher number of fatal crashes. 
+
+**Data**
+ 
+[Nebraska Data](https://dot.nebraska.gov/media/115479/facts2020.pdf)
+
+[10 Most Populated Nebraska Counties](https://www.nebraska-demographics.com/counties_by_population)
+
+[US Data](https://www.iihs.org/topics/fatality-statistics/detail/state-by-state)
+
+[BAC Data](https://cdan.dot.gov/query)
+
+
+Column
+-----------------------------------------------------------------------
+
+
+
+```{r, out.width = '100%'}
+
+crashes<-"https://www.iihs.org/topics/fatality-statistics/detail/state-by-state"
+
+CrashesStates<-read_html(crashes)
+
+cv_table<-CrashesStates%>%
+  html_table()
+
+
+crashesDf<-cv_table[[1]]
+
+crashesDf<-crashesDf%>%rename(state=1,Population=2,Cut=3,Fatalcrashes=4,Deaths=5,Deathsperpopulation=6,de=7)%>%
+  slice(-1)%>%select(-c(Cut,de))%>%slice(-52)
+
+
+crashesDf<-crashesDf%>% mutate_at(c("Population","Fatalcrashes","Deaths","Deathsperpopulation"), as.numeric)
+
+x<-plot_usmap(data = crashesDf, values = "Deathsperpopulation", color = "black") + 
+  scale_fill_continuous(low = "grey", high = "red", name = "Deaths", label = scales::comma) +
+  labs(title = "Motor Vehichle Deaths per 100,000 people") +
+  theme(legend.position = "right")
+  
+
+
+ggplotly(x)
+
+
+```
+
+
+
+US Death by Road User
+====================================
+
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+**Background**
+
+This graph represents the percent of deaths involving each category of road user. Road user meaning car occupant, truck occupant, pedestrian, etc. I looked at 4 states that I was interested in which was Nebraska, Colorado, Arizona and Texas. I also inclueded the US total to compare to each of these 4 states. 
+
+**Data**
+
+[Nebraska Data](https://dot.nebraska.gov/media/115479/facts2020.pdf)
+
+[10 Most Populated Nebraska Counties](https://www.nebraska-demographics.com/counties_by_population)
+
+[US Data](https://www.iihs.org/topics/fatality-statistics/detail/state-by-state)
+
+[BAC Data](https://cdan.dot.gov/query)
+
+
+
+Column
+-----------------------------------------------------------------------
+
+
+
+```{r, out.width = '100%'}
+
+crashes<-"https://www.iihs.org/topics/fatality-statistics/detail/state-by-state"
+
+Crashestype<-read_html(crashes)
+
+#We read in all of the tables on the page
+cv_table<-Crashestype%>%
+  html_table()
+
+crashestypeDf<-cv_table[[2]]
+
+
+crashestypeDf<-crashestypeDf%>%rename(state=1,CarNumber=2,Car=3,PickupandSUVnumber=4,PickupSUV=5,Largetrucknumber=6,Largetruck=7,motorcyclenuber=8,Motorcycle=9,pednumber=10,Pedestrian=11,bikenum=12,Bike=13,totnum=14,totper=15) %>%
+  select(-c(CarNumber,PickupandSUVnumber,Largetrucknumber,motorcyclenuber,pednumber,bikenum,totnum,totper))%>%
+  filter(state %in% c("Colorado", "Nebraska", "Arizona", "Texas", "U.S. total"))
+
+crashestypeDf<-crashestypeDf%>%
+  pivot_longer(
+    cols = !state, 
+    names_to = "type", 
+    values_to = "percent")
+
+crashestypeDf$percent<-as.numeric(crashestypeDf$percent)
+
+crashestypeDf$type <- factor(crashestypeDf$type, levels = c("Car", "PickupSUV", "Motorcycle", "Pedestrian", "Largetruck", "Bike"))
+
+p<-ggplot(crashestypeDf, 
+       aes(x = type, 
+           y = percent, 
+           fill = state)) + 
+  geom_bar(stat = "identity", 
+           position = "dodge", 
+           color = "black") +
+  labs(x = "Type", 
+       y = "Percent", 
+       title = "Road Users Involved in Car Accident Death 2020") +
+  scale_fill_manual(values = c("#003049", "#d62828", "#f77f00", "#fcbf49","#eae2b7")) +
+  theme(legend.position = "top") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1, suffix = "%"), limits = c(0, 40))
+
+ggplotly(p)
+
+
+```
+
+
+US Fatal Crashes BAC
+====================================
+
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+**Background**
+
+This graph represents the blood alcohol concentration(BAC) of drivers involved in fatal crashes in the US from 2007 to 2021
+
+**Data**
+
+[Nebraska Data](https://dot.nebraska.gov/media/115479/facts2020.pdf)
+
+[10 Most Populated Nebraska Counties](https://www.nebraska-demographics.com/counties_by_population)
+
+[US Data](https://www.iihs.org/topics/fatality-statistics/detail/state-by-state)
+
+[BAC Data](https://cdan.dot.gov/query)
+
+
+
+Column
+-----------------------------------------------------------------------
+
+
+
+```{r, out.width = '100%'}
+# Load the Excel file into R
+df2 <- read_excel("~/Desktop/Final Project/CrashReport1.xlsx", sheet = 1)
+
+# Save the data as a CSV file
+write.csv(df2, file = "~/Desktop/Final Project/CrashReport1.csv", row.names = FALSE)
+
+df2 <- read.csv("~/Desktop/Final Project/CrashReport1.csv")
+
+
+df2 <- select(df2,1,2,4,6,)
+
+df2<-df2%>%rename("Year"=1,".00 BAC"=2,".01-.07 BAC"=3,".08 BAC+"=4)
+
+df2<-df2%>%
+  mutate_if(is.character,as.numeric) 
+
+df2$Year<-as.character(df2$Year)
+df2$Year<-as.Date(df2$Year, "%Y")
+
+df2 <- df2 %>%
+  slice(-c(1, 2, 18))
+
+df2<-df2%>%
+  pivot_longer(
+    cols = -Year, 
+    names_to = "BAClevel", 
+    values_to = "Crashes")
+
+d<-ggplot(df2, aes(x = Year, y = Crashes, color = BAClevel)) +
+  geom_line(linewidth = 1.5) +
+  labs(title= "BAC Level of Fatal Crashes 2007-2021", x = "Year", y = "Number of Fatal Crashes", color = "BAC Level g/dl") +
+  theme_bw() +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+ggplotly(d)
+
+```
+
+
+Unique Code 
+====================================
+
+finaldf<-finaldf%>%
+  filter(grepl('Douglas|Lancaster|Sarpy|Hall|Buffalo|Dodge|Scotts Bluff|Madison|Lincoln|Platte',County))#filtering so that I have the coounties that I want 
+lon.lat.df<-data.frame(CountyName= c("Buffalo","Dodge","Douglas","Hall","Lancaster","Lincoln","Madison","Platte","Sarpy","Scotts Bluff"),
+                       lat=c(40.8410,41.6473,41.3148,40.8817,40.8471,40.9338,41.9108,41.5941,41.0744,41.8141),
+                       lon=c(-99.1013,-96.6638,-96.1951,-98.5721,-96.6638,-100.8000,-97.5247,-97.5247,-96.1951,-103.6363)
+                       
+                       
+
+crashestypeDf<-crashestypeDf%>%
+  pivot_longer(
+    cols = !state, 
+    names_to = "type", 
+    values_to = "percent")
+    
+    
+    
+
+x<-plot_usmap(data = crashesDf, values = "Deathsperpopulation", color = "black") + 
+  scale_fill_continuous(low = "grey", high = "red", name = "Deaths", label = scales::comma) +
+  labs(title = "Motor Vehichle Deaths per 100,000 people") +
+  theme(legend.position = "right")
+    
+
+
